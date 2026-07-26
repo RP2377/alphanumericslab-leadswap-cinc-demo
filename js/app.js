@@ -242,6 +242,7 @@
       var to = toCorrected ? c.waveforms.corrected : c.waveforms.recorded;
       ECG.morphLeads(panel.canvas, from, to, 650);
       if (toCorrected) diagram.undo();
+      else diagram.applySwap();
       state.showingCorrected = toCorrected;
       panel.caption.replaceWith(h('div', { class: 'ecg-caption' }, [
         h('span', {}, ['Limb leads · I, II, III, aVR, aVL, aVF']),

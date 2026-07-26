@@ -108,9 +108,12 @@
       g.appendChild(ring);
       g.appendChild(txt);
       svg.appendChild(g);
-      groups[name] = { g: g, ring: ring, home: home };
+      // Remember both resting states so we can animate between them: `swapPos`
+      // is where this electrode sits while swapped, `home` its correct spot.
+      groups[name] = { g: g, ring: ring, home: home, swapPos: start, swapped: swapped };
     });
 
+    // Animate to the CORRECTED state: electrodes glide home and turn green.
     function undo() {
       if (!pair) return;
       Object.keys(groups).forEach(function (name) {
@@ -123,7 +126,21 @@
       if (swapLine) swapLine.setAttribute('opacity', '0');
     }
 
-    return { node: svg, undo: undo, hasSwap: !!pair };
+    // Animate back to the SWAPPED state: electrodes glide to swapped positions
+    // and the exchanged pair turns red again (mirror of undo()).
+    function applySwap() {
+      if (!pair) return;
+      Object.keys(groups).forEach(function (name) {
+        var grp = groups[name];
+        grp.g.setAttribute('transform', 'translate(' + grp.swapPos.x + ',' + grp.swapPos.y + ')');
+        grp.ring.setAttribute('stroke', grp.swapped ? '#f87171' : grp.home.color);
+        grp.ring.setAttribute('fill', grp.swapped ? '#5b1a1f' : '#1b2440');
+        grp.ring.setAttribute('stroke-width', grp.swapped ? '3' : '2');
+      });
+      if (swapLine) swapLine.setAttribute('opacity', '0.9');
+    }
+
+    return { node: svg, undo: undo, applySwap: applySwap, hasSwap: !!pair };
   }
 
   global.BodyDiagram = { create: create, SWAP_PAIR: SWAP_PAIR };
