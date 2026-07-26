@@ -162,7 +162,8 @@
       ]),
       h('div', { class: 'case-list' }, cards),
       h('div', { class: 'notice', style: 'margin-top:16px' }, [
-        'This demonstration uses simulated model outputs for synthetic ECG examples.'
+        CaseData.disclaimer ||
+        'This demonstration uses precomputed model outputs for de-identified ECG examples.'
       ])
     ]);
   }
@@ -444,6 +445,28 @@
     }
   }
 
-  window.addEventListener('hashchange', onHashChange);
-  onHashChange();
+  function renderLoading() {
+    mount([h('div', { class: 'panel fade-in', style: 'text-align:center' }, [
+      h('p', { class: 'muted', style: 'margin:0' }, ['Loading examples…'])
+    ])]);
+  }
+
+  function renderLoadError() {
+    mount([h('div', { class: 'panel fade-in' }, [
+      h('h2', {}, ['Couldn’t load case data']),
+      h('p', {}, ['data/cases.json failed to load. If running locally, serve over http (not file://).']),
+      h('button', { class: 'btn', onclick: function () { location.reload(); } }, ['Retry'])
+    ])]);
+  }
+
+  // Case data loads asynchronously (fetch + service-worker cache), so wait for
+  // it before wiring routing / first render.
+  renderLoading();
+  CaseData.load().then(function () {
+    window.addEventListener('hashchange', onHashChange);
+    onHashChange();
+  }).catch(function (err) {
+    if (global.console) console.error('case data load failed:', err);
+    renderLoadError();
+  });
 })();

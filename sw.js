@@ -1,6 +1,6 @@
 /* Minimal offline cache for the poster demo (conference Wi-Fi can be flaky).
    Cache-first for our own static assets. Bump CACHE on any asset change. */
-var CACHE = 'detect-correct-v2';
+var CACHE = 'detect-correct-v3';
 var ASSETS = [
   './',
   './index.html',
@@ -8,7 +8,8 @@ var ASSETS = [
   './js/ecg.js',
   './js/bodyDiagram.js',
   './js/cases.js',
-  './js/app.js'
+  './js/app.js',
+  './data/cases.json'
 ];
 
 self.addEventListener('install', function (e) {

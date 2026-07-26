@@ -10,17 +10,18 @@
 <body>
   <!--
     Static, self-contained prototype for the poster "Detect and Correct" flow.
-    No server round-trips: all logic + (fake) case data live client-side so the
-    page loads once and runs from cache on a phone/tablet/laptop.
+    No server round-trips: logic + precomputed case data (data/cases.json) live
+    client-side so the page loads once and runs from cache on phone/tablet/laptop.
 
-    SKELETON NOTE: model outputs and ECG waveforms here are FAKE placeholders.
-    Real work later replaces js/cases.js data with precomputed exports from
-    ecg-lead-swapping/codes/website_export/ (see repo TODO.md).
+    Case data is produced by ecg-lead-swapping/codes/website_export/export_cases.py
+    (real model outputs on real PTB-XL records). Records are currently RANDOM
+    placeholders; swap in curated ones later via export_cases.py --ecg-ids.
   -->
   <div id="app" class="app"></div>
 
   <footer class="site-disclaimer">
-    Prototype — uses <strong>simulated</strong> model outputs and synthetic ECGs.
+    Prototype — precomputed model outputs on de-identified PTB-XL records
+    (currently <strong>randomly chosen placeholders</strong>).
     No personal data is collected. No ECG uploads.
   </footer>
 
