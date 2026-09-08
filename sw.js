@@ -1,6 +1,6 @@
 /* Minimal offline cache for the poster demo (conference Wi-Fi can be flaky).
    Cache-first for our own static assets. Bump CACHE on any asset change. */
-var CACHE = 'detect-correct-v3';
+var CACHE = 'detect-correct-v4';
 var ASSETS = [
   './',
   './index.html',

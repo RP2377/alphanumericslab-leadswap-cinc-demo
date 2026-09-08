@@ -1,26 +1,29 @@
 /* ===========================================================================
-   bodyDiagram.js — SVG limb-electrode placement diagram
+   bodyDiagram.js — draggable SVG limb-electrode placement diagram
    ---------------------------------------------------------------------------
-   Draws a torso with the four limb electrodes (RA, LA, LL, RL). Given a swap
-   CLASS (0-5) it places each electrode at the location dictated by that class's
-   permutation, highlights any displaced electrodes in red, and can animate
-   between the swapped and corrected states. Handles single swaps (classes
-   1-3) AND 3-cycles (classes 4-5), so any class the model predicts renders
-   cleanly. Each electrode is a <g transform> with a CSS transition for smooth,
-   reliable movement across browsers.
+   Draws a torso with the four limb electrodes (RA, LA, LL, RL) and lets the
+   user physically drag them between the three limb positions, in any
+   arrangement. RL (ground) is never involved in a swap and is not draggable.
+   Electrodes start at the locations dictated by the given swap CLASS (0-5) —
+   i.e. the "as recorded" mis-wiring — and turn from red (wrong spot) to green
+   (correct spot) as they land on their true anatomical position. onChange(occupant)
+   fires after every drop that actually changes the arrangement, passing the full
+   slot->electrode mapping so callers can recompute the ECG for that exact wiring.
+   Handles single swaps (classes 1-3) AND 3-cycles (classes 4-5).
    =========================================================================== */
 (function (global) {
   'use strict';
 
   // Body locations (viewBox 0..200 x, 0..240 y). RL = right leg (ground).
   var LOC = {
-    RA: { x: 44, y: 78, color: '#f87171' },
-    LA: { x: 156, y: 78, color: '#fbbf24' },
-    LL: { x: 132, y: 196, color: '#34d399' },
+    RA: { x: 44, y: 78 },
+    LA: { x: 156, y: 78 },
+    LL: { x: 132, y: 196 },
     RL: { x: 68, y: 196, color: '#94a3b8' }
   };
+  var LIMB_SLOTS = ['RA', 'LA', 'LL'];
 
-  // For each class, which electrode sits at [RA-loc, LA-loc, LL-loc].
+  // For each class, which electrode sits at [RA-loc, LA-loc, LL-loc] initially.
   // Mirrors src/class_consts.py CLASS_TO_PERM (RL is never involved).
   var CLASS_PERM = {
     0: ['RA', 'LA', 'LL'],
@@ -30,7 +33,22 @@
     4: ['LA', 'LL', 'RA'],
     5: ['LL', 'RA', 'LA']
   };
-  var LIMB_POS = ['RA', 'LA', 'LL'];   // the three limb-location names, in order
+
+  var PERM_TO_CLASS = {};
+  Object.keys(CLASS_PERM).forEach(function (k) {
+    PERM_TO_CLASS[CLASS_PERM[k].join(',')] = Number(k);
+  });
+
+  // occupant: { RA: electrodeIdAtRAslot, LA: ..., LL: ... } -> class id (0-5).
+  function classIdFromOccupant(occupant) {
+    return PERM_TO_CLASS[[occupant.RA, occupant.LA, occupant.LL].join(',')];
+  }
+
+  // class id (0-5) -> occupant mapping, the inverse of classIdFromOccupant.
+  function occupantFromClassId(classId) {
+    var perm = CLASS_PERM[classId] || CLASS_PERM[0];
+    return { RA: perm[0], LA: perm[1], LL: perm[2] };
+  }
 
   function el(tag, attrs) {
     var e = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -38,29 +56,36 @@
     return e;
   }
 
-  // Where does electrode `e` sit for a given class? Returns a location name.
-  function swappedLocationOf(e, classId) {
-    if (e === 'RL') return 'RL';
-    var perm = CLASS_PERM[classId] || CLASS_PERM[0];
-    var idx = perm.indexOf(e);        // position holding electrode e
-    return LIMB_POS[idx];
+  function svgPoint(svg, clientX, clientY) {
+    var pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    var ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    var loc = pt.matrixTransform(ctm.inverse());
+    return { x: loc.x, y: loc.y };
   }
 
-  // Create the diagram. classId: the swap to depict (0 = none).
-  // Returns { node, undo(), applySwap(), hasSwap }.
-  function create(classId) {
+  // Create the diagram. classId: the swap depicted at the start (0 = none).
+  // onChange(isCorrected): called only when the full arrangement transitions
+  // into or out of "corrected" (every electrode on its true home slot).
+  // Returns { node, isCorrected(), reset() }.
+  function create(classId, onChange) {
     classId = CLASS_PERM[classId] ? classId : 0;
-    var displaced = ['RA', 'LA', 'LL'].filter(function (e) {
-      return swappedLocationOf(e, classId) !== e;
-    });
+    var perm = CLASS_PERM[classId];
+
+    function startSlotOf(e) {
+      return e === 'RL' ? 'RL' : LIMB_SLOTS[perm.indexOf(e)];
+    }
 
     var svg = el('svg', {
       viewBox: '0 0 200 240', width: '100%',
-      role: 'img', 'aria-label': 'Electrode placement diagram'
+      role: 'img', 'aria-label': 'Drag the electrodes to their correct anatomical positions'
     });
     svg.style.maxWidth = '260px';
     svg.style.display = 'block';
     svg.style.margin = '0 auto';
+    svg.style.touchAction = 'none';
+    svg.style.userSelect = 'none';
 
     var body = el('path', {
       d: 'M100 20 ' +
@@ -74,42 +99,58 @@
     });
     svg.appendChild(body);
 
-    // Dashed connectors among displaced electrodes (their swapped positions).
-    // 2 displaced -> one line; 3 displaced (a cycle) -> a triangle.
-    var swapLines = [];
-    for (var a = 0; a < displaced.length; a++) {
-      for (var b = a + 1; b < displaced.length; b++) {
-        var la = LOC[swappedLocationOf(displaced[a], classId)];
-        var lb = LOC[swappedLocationOf(displaced[b], classId)];
-        var line = el('line', {
-          x1: la.x, y1: la.y, x2: lb.x, y2: lb.y,
-          stroke: '#f87171', 'stroke-width': '2', 'stroke-dasharray': '4 4', opacity: '0.9'
-        });
-        line.style.transition = 'opacity 0.4s ease';
-        svg.appendChild(line);
-        swapLines.push(line);
+    var linesLayer = el('g', {});
+    svg.appendChild(linesLayer);
+
+    var occupant = {};   // slot name -> electrode identity currently there
+    var slotOf = {};     // electrode identity -> slot name it currently occupies
+    ['RA', 'LA', 'LL', 'RL'].forEach(function (e) {
+      var s = startSlotOf(e);
+      occupant[s] = e; slotOf[e] = s;
+    });
+
+    function isCorrected() {
+      return LIMB_SLOTS.every(function (s) { return occupant[s] === s; });
+    }
+
+    function currentOccupant() {
+      return { RA: occupant.RA, LA: occupant.LA, LL: occupant.LL };
+    }
+
+    function updateVisual(e) {
+      var grp = groups[e];
+      var loc = LOC[slotOf[e]];
+      grp.g.setAttribute('transform', 'translate(' + loc.x + ',' + loc.y + ')');
+      var atHome = e === 'RL' || slotOf[e] === e;
+      grp.ring.setAttribute('stroke', atHome ? (e === 'RL' ? LOC.RL.color : '#34d399') : '#f87171');
+      grp.ring.setAttribute('fill', atHome ? (e === 'RL' ? '#1b2440' : '#0f2e24') : '#5b1a1f');
+      grp.ring.setAttribute('stroke-width', atHome ? '2' : '3');
+    }
+
+    function redrawLines() {
+      while (linesLayer.firstChild) linesLayer.removeChild(linesLayer.firstChild);
+      var displaced = LIMB_SLOTS.filter(function (s) { return occupant[s] !== s; });
+      for (var a = 0; a < displaced.length; a++) {
+        for (var b = a + 1; b < displaced.length; b++) {
+          var la = LOC[displaced[a]], lb = LOC[displaced[b]];
+          linesLayer.appendChild(el('line', {
+            x1: la.x, y1: la.y, x2: lb.x, y2: lb.y,
+            stroke: '#f87171', 'stroke-width': '2', 'stroke-dasharray': '4 4', opacity: '0.6'
+          }));
+        }
       }
     }
 
-    // Electrode groups, keyed by electrode identity.
     var groups = {};
+    var dragState = null;
+
     ['RA', 'LA', 'LL', 'RL'].forEach(function (e) {
-      var home = LOC[e];
-      var swapLocName = swappedLocationOf(e, classId);
-      var swapPos = LOC[swapLocName];
-      var isDisplaced = swapLocName !== e;
+      var g = el('g', { transform: 'translate(0,0)' });
+      g.style.transition = 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
+      if (e !== 'RL') g.style.cursor = 'grab';
 
-      var g = el('g', { transform: 'translate(' + swapPos.x + ',' + swapPos.y + ')' });
-      g.style.transition = 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
-
-      // Solid dark fill so the white label stays legible in light and dark themes.
-      var ring = el('circle', {
-        r: '15',
-        fill: isDisplaced ? '#5b1a1f' : '#1b2440',
-        stroke: isDisplaced ? '#f87171' : home.color,
-        'stroke-width': isDisplaced ? '3' : '2'
-      });
-      ring.style.transition = 'stroke 0.4s ease, fill 0.4s ease';
+      var ring = el('circle', { r: '15', 'stroke-width': '2' });
+      ring.style.transition = 'stroke 0.3s ease, fill 0.3s ease';
 
       var txt = el('text', {
         x: '0', y: '4', 'text-anchor': 'middle',
@@ -119,38 +160,76 @@
       txt.textContent = e;   // label = the electrode's true identity, travels with it
 
       g.appendChild(ring); g.appendChild(txt); svg.appendChild(g);
-      groups[e] = { g: g, ring: ring, home: home, swapPos: swapPos, displaced: isDisplaced };
+      groups[e] = { g: g, ring: ring };
+
+      if (e !== 'RL') {
+        g.addEventListener('pointerdown', function (evt) {
+          evt.preventDefault();
+          g.setPointerCapture(evt.pointerId);
+          g.style.cursor = 'grabbing';
+          g.style.transition = 'none';
+          dragState = { e: e, pointerId: evt.pointerId };
+          svg.appendChild(g);   // bring to front while dragging
+        });
+      }
     });
 
-    // Animate to the CORRECTED state: electrodes glide home and turn green.
-    function undo() {
-      if (!displaced.length) return;
-      Object.keys(groups).forEach(function (e) {
-        var grp = groups[e];
-        grp.g.setAttribute('transform', 'translate(' + grp.home.x + ',' + grp.home.y + ')');
-        grp.ring.setAttribute('stroke', e === 'RL' ? grp.home.color : '#34d399');
-        grp.ring.setAttribute('fill', e === 'RL' ? '#1b2440' : '#0f2e24');
-        grp.ring.setAttribute('stroke-width', '2');
+    svg.addEventListener('pointermove', function (evt) {
+      if (!dragState || dragState.pointerId !== evt.pointerId) return;
+      var p = svgPoint(svg, evt.clientX, evt.clientY);
+      groups[dragState.e].g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
+    });
+
+    function endDrag(evt) {
+      if (!dragState || dragState.pointerId !== evt.pointerId) return;
+      var e = dragState.e;
+      var g = groups[e].g;
+      g.style.transition = 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
+      g.style.cursor = 'grab';
+      dragState = null;
+
+      var p = svgPoint(svg, evt.clientX, evt.clientY);
+      var nearest = LIMB_SLOTS[0], best = Infinity;
+      LIMB_SLOTS.forEach(function (s) {
+        var d = Math.hypot(LOC[s].x - p.x, LOC[s].y - p.y);
+        if (d < best) { best = d; nearest = s; }
       });
-      swapLines.forEach(function (l) { l.setAttribute('opacity', '0'); });
+
+      var fromSlot = slotOf[e];
+      var changed = nearest !== fromSlot;
+      if (changed) {
+        var other = occupant[nearest];
+        occupant[fromSlot] = other; slotOf[other] = fromSlot;
+        occupant[nearest] = e; slotOf[e] = nearest;
+        updateVisual(other);
+      }
+      updateVisual(e);
+      redrawLines();
+
+      if (changed && onChange) onChange(currentOccupant());
+    }
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+
+    ['RA', 'LA', 'LL', 'RL'].forEach(updateVisual);
+    redrawLines();
+
+    // "Reset" jumps straight to the LA <-> LL swap arrangement (not back to the
+    // starting layout) — a one-tap shortcut to the swap type this demo cares about.
+    function reset() {
+      occupant = { RA: 'RA', LA: 'LL', LL: 'LA', RL: 'RL' };
+      slotOf = { RA: 'RA', LA: 'LL', LL: 'LA', RL: 'RL' };
+      ['RA', 'LA', 'LL', 'RL'].forEach(updateVisual);
+      redrawLines();
+      if (onChange) onChange(currentOccupant());
     }
 
-    // Animate back to the SWAPPED state: electrodes glide to swapped positions,
-    // displaced ones turn red again (mirror of undo()).
-    function applySwap() {
-      if (!displaced.length) return;
-      Object.keys(groups).forEach(function (e) {
-        var grp = groups[e];
-        grp.g.setAttribute('transform', 'translate(' + grp.swapPos.x + ',' + grp.swapPos.y + ')');
-        grp.ring.setAttribute('stroke', grp.displaced ? '#f87171' : grp.home.color);
-        grp.ring.setAttribute('fill', grp.displaced ? '#5b1a1f' : '#1b2440');
-        grp.ring.setAttribute('stroke-width', grp.displaced ? '3' : '2');
-      });
-      swapLines.forEach(function (l) { l.setAttribute('opacity', '0.9'); });
-    }
-
-    return { node: svg, undo: undo, applySwap: applySwap, hasSwap: displaced.length > 0 };
+    return { node: svg, isCorrected: isCorrected, getOccupant: currentOccupant, reset: reset };
   }
 
-  global.BodyDiagram = { create: create };
+  global.BodyDiagram = {
+    create: create,
+    classIdFromOccupant: classIdFromOccupant,
+    occupantFromClassId: occupantFromClassId
+  };
 })(window);

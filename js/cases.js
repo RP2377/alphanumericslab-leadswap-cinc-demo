@@ -10,7 +10,10 @@
      binary { swapProbability, threshold },
      multiclass { predictedClass, probabilities[6] },
      leadOrder, samplingRateHz, reconstructionMetrics|null,
-     waveforms { recorded[6][], corrected?[6][], reference?[6][] }
+     waveforms { recorded[6][], corrected?[6][], reference?[6][] },
+     electrodeOrder ["RA","LA","LL"], electrodes { RA[], LA[], LL[] } — true-identity
+     electrode potentials; ECG.leadsFromElectrodes() mixes these into leads live for
+     whatever RA/LA/LL wiring the body diagram is currently showing.
    =========================================================================== */
 (function (global) {
   'use strict';

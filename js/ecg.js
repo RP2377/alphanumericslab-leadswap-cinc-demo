@@ -109,9 +109,31 @@
     requestAnimationFrame(frame);
   }
 
+  // Mix true-identity RA/LA/LL electrode potentials into the 6 limb leads, given
+  // which identity currently occupies each anatomical slot (occupant.RA/LA/LL).
+  // Standard Einthoven/Goldberger relations — mirrors the limb-lead rows of
+  // ELEC_TO_LEAD_FULL in ecg-lead-swapping/codes/src/ecg_transform_consts.py.
+  function leadsFromElectrodes(electrodes, occupant) {
+    var RA = electrodes[occupant.RA], LA = electrodes[occupant.LA], LL = electrodes[occupant.LL];
+    var n = RA.length;
+    var I = new Array(n), II = new Array(n), III = new Array(n),
+        aVR = new Array(n), aVL = new Array(n), aVF = new Array(n);
+    for (var i = 0; i < n; i++) {
+      var ra = RA[i], la = LA[i], ll = LL[i];
+      I[i] = la - ra;
+      II[i] = ll - ra;
+      III[i] = ll - la;
+      aVR[i] = ra - la / 2 - ll / 2;
+      aVL[i] = la - ra / 2 - ll / 2;
+      aVF[i] = ll - ra / 2 - la / 2;
+    }
+    return [I, II, III, aVR, aVL, aVF];
+  }
+
   global.ECG = {
     LIMB_LEADS: LIMB_LEADS,
     renderLeads: renderLeads,
-    morphLeads: morphLeads
+    morphLeads: morphLeads,
+    leadsFromElectrodes: leadsFromElectrodes
   };
 })(window);

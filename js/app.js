@@ -147,8 +147,7 @@
       return h('button', { class: 'case-card fade-in', onclick: function () { openCase(c.id); } }, [
         h('div', { class: 'num' }, [String(c.num)]),
         h('div', { class: 'meta' }, [
-          h('div', { class: 't' }, [c.title]),
-          h('div', { class: 'd' }, [c.subtitle])
+          h('div', { class: 't' }, ['Example #' + c.num])
         ]),
         h('div', { class: 'chev' }, ['›'])
       ]);
@@ -156,15 +155,11 @@
 
     mount([
       h('div', { class: 'hero fade-in' }, [
+        h('div', { class: 'hero-ecg', 'aria-hidden': 'true' }),
         h('span', { class: 'badge' }, ['Detect & Correct']),
-        h('h1', {}, ['Can you spot the electrode swap?']),
-        h('p', {}, ['Inspect each ECG, make your guess, then see what the model predicts. About a minute.'])
+        h('h1', {}, ['Can you spot the electrode swap?'])
       ]),
-      h('div', { class: 'case-list' }, cards),
-      h('div', { class: 'notice', style: 'margin-top:16px' }, [
-        CaseData.disclaimer ||
-        'This demonstration uses precomputed model outputs for de-identified ECG examples.'
-      ])
+      h('div', { class: 'case-list' }, cards)
     ]);
   }
 
@@ -179,7 +174,7 @@
 
   // ---- Example 1: synthetic obvious swap ------------------------------------
   function renderSyntheticSwap(c) {
-    var crumb = 'Example 1 · ' + c.title;
+    var crumb = 'Example #' + c.num;
 
     if (state.step === 'inspect') {
       var panel = ecgPanel(c.waveforms.recorded, 'Recorded', 'recorded');
@@ -225,45 +220,53 @@
     }
   }
 
-  // Shared final page for Example 1 (both branches converge here).
-  function mountFinalSwap(c, crumb, correct) {
-    var diagram = BodyDiagram.create(c.multiclass.predictedClass);
-    var panel = ecgPanel(
-      state.showingCorrected ? c.waveforms.corrected : c.waveforms.recorded,
-      state.showingCorrected ? 'Corrected' : 'Recorded',
-      state.showingCorrected ? 'corrected' : 'recorded'
-    );
+  // Shared final page for the quiz flow (Example 1 and Example 3 both converge here).
+  // The electrode diagram is fully free-drag: whatever RA/LA/LL arrangement the
+  // user lands on, the ECG is remixed live from the raw electrode signals to show
+  // exactly what that wiring would record (see ECG.leadsFromElectrodes).
+  function mountFinalSwap(c, crumb, correct, opts) {
+    opts = opts || {};
 
-    var undoBtn = h('button', { class: 'btn primary' }, [
-      state.showingCorrected ? 'Show recorded again' : 'Undo swap →'
+    function pillClassFor(classId) { return classId === 0 ? 'corrected' : 'recorded'; }
+
+    var initialOccupant = BodyDiagram.occupantFromClassId(c.multiclass.predictedClass);
+    var currentLeads = ECG.leadsFromElectrodes(c.electrodes, initialOccupant);
+    var panel = ecgPanel(currentLeads, CaseData.CLASS_LABELS[c.multiclass.predictedClass], pillClassFor(c.multiclass.predictedClass));
+
+    var hint = h('p', { class: 'tiny', style: 'margin:10px 0 0;text-align:center' }, [
+      'Drag any electrode to any position — the ECG updates live to match that exact wiring.'
     ]);
-    undoBtn.addEventListener('click', function () {
-      var toCorrected = !state.showingCorrected;
-      var from = toCorrected ? c.waveforms.recorded : c.waveforms.corrected;
-      var to = toCorrected ? c.waveforms.corrected : c.waveforms.recorded;
-      ECG.morphLeads(panel.canvas, from, to, 650);
-      if (toCorrected) diagram.undo();
-      else diagram.applySwap();
-      state.showingCorrected = toCorrected;
-      panel.caption.replaceWith(h('div', { class: 'ecg-caption' }, [
+
+    var diagram = BodyDiagram.create(c.multiclass.predictedClass, function (occupant) {
+      var newLeads = ECG.leadsFromElectrodes(c.electrodes, occupant);
+      ECG.morphLeads(panel.canvas, currentLeads, newLeads, 650);
+      currentLeads = newLeads;
+      var classId = BodyDiagram.classIdFromOccupant(occupant);
+      var newCaption = h('div', { class: 'ecg-caption' }, [
         h('span', {}, ['Limb leads · I, II, III, aVR, aVL, aVF']),
-        h('span', { class: 'pill ' + (toCorrected ? 'corrected' : 'recorded') }, [toCorrected ? 'Corrected' : 'Recorded'])
-      ]));
-      undoBtn.textContent = toCorrected ? 'Show recorded again' : 'Undo swap →';
+        h('span', { class: 'pill ' + pillClassFor(classId) }, [CaseData.CLASS_LABELS[classId]])
+      ]);
+      panel.caption.replaceWith(newCaption);
+      panel.caption = newCaption;
     });
+
+    var resetBtn = h('button', { class: 'btn ghost', style: 'margin-top:10px' }, ['Reset electrodes']);
+    resetBtn.addEventListener('click', function () { diagram.reset(); });
 
     mount([
       topbar(crumb),
       h('div', { class: 'fade-in' }, [
-        banner(correct ? 'good' : 'bad', correct ? 'Correct!' : 'Not quite.'),
+        opts.notice ? h('div', { class: 'notice strong', style: 'font-weight:700;color:#000' }, [opts.notice]) : null,
+        banner(correct ? 'good' : 'bad', correct ? (opts.correctText || 'Correct!') : (opts.wrongText || 'Not quite.')),
         binaryReadout(c),
         multiclassReadout(c),
         h('div', { class: 'panel' }, [
           h('div', { class: 'section-label' }, ['Electrode placement']),
           diagram.node,
-          h('p', { class: 'tiny', style: 'margin-top:10px;text-align:center' }, [c.explanation]),
+          hint,
+          h('p', { class: 'tiny', style: 'margin-top:6px;text-align:center' }, [c.explanation]),
           panel.node,
-          undoBtn
+          resetBtn
         ])
       ])
     ]);
@@ -271,7 +274,7 @@
 
   // ---- Example 2: clean, no swap --------------------------------------------
   function renderClean(c) {
-    var crumb = 'Example 2 · ' + c.title;
+    var crumb = 'Example #' + c.num;
 
     if (state.step === 'inspect') {
       var panel = ecgPanel(c.waveforms.recorded, 'Recorded', 'recorded');
@@ -325,73 +328,57 @@
     }
   }
 
-  // ---- Example 3: real, unconfirmed -----------------------------------------
+  // ---- Example 3: real, confidently model-flagged ----------------------------
   function renderRealUnconfirmed(c) {
-    var crumb = 'Example 3 · ' + c.title;
+    var crumb = 'Example #' + c.num + ' · PTB-XL #' + c.ecg_id;
 
     if (state.step === 'inspect') {
       var panel = ecgPanel(c.waveforms.recorded, 'As recorded', 'recorded');
       return mount([
         topbar(crumb),
         h('div', { class: 'fade-in' }, [
-          h('div', { class: 'notice strong' }, [
-            'This is a real, unreviewed ECG the model flagged as a likely swap — the correction shown is a hypothesis, not a confirmed fact.'
-          ]),
-          h('div', { class: 'prompt' }, ['Does this look swapped to you?']),
+          h('div', { class: 'prompt' }, ['Is this ECG swapped?']),
           panel.node,
           h('div', { class: 'btn-row' }, [
-            h('button', { class: 'btn', onclick: function () { state.swapGuess = 'swap'; setStep('binary'); } }, ['Swapped']),
-            h('button', { class: 'btn', onclick: function () { state.swapGuess = 'noswap'; setStep('binary'); } }, ['Not swapped'])
+            h('button', { class: 'btn primary', onclick: function () { setStep('quiz'); state.swapGuess = 'swap'; } }, ['Swap']),
+            h('button', { class: 'btn', onclick: function () { state.swapGuess = 'noswap'; setStep('binaryReveal'); } }, ['No swap'])
           ])
         ])
       ]);
     }
 
-    if (state.step === 'binary') {
+    if (state.step === 'binaryReveal') {   // reached only from a "No swap" (model-disagrees) guess
       return mount([
         topbar(crumb),
         h('div', { class: 'fade-in' }, [
-          banner('neutral', 'Here’s what the model thinks:'),
+          banner('bad', 'The model disagrees — it flagged this recording as swapped.'),
           binaryReadout(c),
-          multiclassReadout(c),
-          h('p', { class: 'tiny' }, ['No confirmed answer exists for this recording, so there’s no right or wrong guess.']),
-          h('button', { class: 'btn primary', onclick: function () { setStep('compare'); } }, ['See the counterfactual correction →'])
+          h('button', { class: 'btn primary', onclick: function () { setStep('quiz'); } }, ['Continue → which swap?'])
         ])
       ]);
     }
 
-    if (state.step === 'compare') {
-      var panel2 = ecgPanel(
-        state.showingCorrected ? c.waveforms.corrected : c.waveforms.recorded,
-        state.showingCorrected ? 'Counterfactual corrected' : 'Raw (as recorded)',
-        state.showingCorrected ? 'corrected' : 'recorded'
-      );
-      var toggle = h('button', { class: 'btn primary' }, [
-        state.showingCorrected ? 'Show raw recording' : 'Show corrected hypothesis'
-      ]);
-      toggle.addEventListener('click', function () {
-        var toCorrected = !state.showingCorrected;
-        ECG.morphLeads(panel2.canvas,
-          toCorrected ? c.waveforms.recorded : c.waveforms.corrected,
-          toCorrected ? c.waveforms.corrected : c.waveforms.recorded, 650);
-        state.showingCorrected = toCorrected;
-        panel2.caption.replaceWith(h('div', { class: 'ecg-caption' }, [
-          h('span', {}, ['Limb leads · I, II, III, aVR, aVL, aVF']),
-          h('span', { class: 'pill ' + (toCorrected ? 'corrected' : 'recorded') }, [toCorrected ? 'Counterfactual corrected' : 'Raw (as recorded)'])
-        ]));
-        toggle.textContent = toCorrected ? 'Show raw recording' : 'Show corrected hypothesis';
-      });
-
+    if (state.step === 'quiz') {
+      var panelQ = ecgPanel(c.waveforms.recorded, 'As recorded', 'recorded');
       return mount([
         topbar(crumb),
         h('div', { class: 'fade-in' }, [
-          h('div', { class: 'notice strong' }, ['Hypothesis only — no confirmed ground truth for this recording.']),
-          h('div', { class: 'prompt' }, ['Compare raw vs. counterfactual']),
-          panel2.node,
-          toggle,
-          h('button', { class: 'btn ghost', style: 'margin-top:12px', onclick: goHome }, ['Back to examples'])
+          h('div', { class: 'prompt' }, ['Which electrodes were swapped?']),
+          panelQ.node,
+          quizButtons(function (classId) { state.classGuess = classId; setStep('final'); })
         ])
       ]);
+    }
+
+    if (state.step === 'final') {
+      var correct = state.classGuess === c.trueClass;
+      var swapLabel = CaseData.CLASS_LABELS[c.multiclass.predictedClass];
+      return mountFinalSwap(c, crumb, correct, {
+        notice: 'This is a real ECG — PTB-XL record #' + c.ecg_id + ', not synthetically swapped. ' +
+          'The model flags it as a possible genuine ' + swapLabel + ' electrode swap in the wild.',
+        correctText: 'Correct — matches the model’s flagged swap.',
+        wrongText: 'Not quite — the model flagged a different swap.'
+      });
     }
   }
 

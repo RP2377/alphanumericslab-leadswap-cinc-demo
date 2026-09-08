@@ -49,6 +49,8 @@ body {
   max-width: var(--maxw);
   margin: 0 auto;
   padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---- Typography ---- */
@@ -92,12 +94,56 @@ p { margin: 0 0 12px; color: var(--ink-dim); line-height: 1.5; }
 }
 
 /* ---- Home / case picker ---- */
-.hero { margin-bottom: 20px; }
+.hero {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: 28px 20px 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--ecg-bg);
+  box-shadow: var(--shadow);
+}
+.hero > * { position: relative; z-index: 1; }
+.hero h1 { color: #eef2ff; }
+
+/* Animated ECG-monitor backdrop: grid + a looping heartbeat trace. */
+.hero-ecg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--ecg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ecg-grid) 1px, transparent 1px),
+    linear-gradient(var(--ecg-grid-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ecg-grid-strong) 1px, transparent 1px);
+  background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
+}
+.hero-ecg::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 90px;
+  transform: translateY(-50%);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 230 90'%3E%3Cpath d='M0,45 L36,45 L44,40 L50,34 L56,40 L64,45 L80,45 L88,50 L94,50 L98,8 L104,80 L110,48 L118,45 L136,45 L146,38 L156,30 L166,38 L176,45 L230,45' fill='none' stroke='%2335e08f' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 230px 90px;
+  opacity: 0.55;
+  animation: ecgScroll 4s linear infinite;
+}
+@keyframes ecgScroll {
+  from { background-position-x: 0; }
+  to { background-position-x: -230px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-ecg::after { animation: none; }
+}
+
 .hero .badge {
   display: inline-block;
-  background: var(--bg-panel-2);
-  border: 1px solid var(--line);
-  color: var(--accent);
+  background: rgba(10, 15, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--ecg-trace);
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 0.75rem;
@@ -106,7 +152,14 @@ p { margin: 0 0 12px; color: var(--ink-dim); line-height: 1.5; }
   margin-bottom: 12px;
 }
 
-.case-list { display: grid; gap: 12px; }
+.case-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 24px;
+  padding: 12px 0;
+}
 .case-card {
   display: flex;
   align-items: center;
@@ -116,7 +169,7 @@ p { margin: 0 0 12px; color: var(--ink-dim); line-height: 1.5; }
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 22px 20px;
   color: var(--ink);
   cursor: pointer;
   transition: transform 0.08s ease, border-color 0.15s ease;
@@ -134,8 +187,7 @@ p { margin: 0 0 12px; color: var(--ink-dim); line-height: 1.5; }
   color: var(--accent);
 }
 .case-card .meta { flex: 1; min-width: 0; }
-.case-card .meta .t { font-weight: 650; margin-bottom: 2px; }
-.case-card .meta .d { font-size: 0.85rem; color: var(--ink-dim); }
+.case-card .meta .t { font-weight: 650; }
 .case-card .chev { color: var(--ink-dim); font-size: 1.3rem; }
 
 /* ---- Buttons ---- */
