@@ -143,9 +143,13 @@
 
   // ---- HOME -----------------------------------------------------------------
   function renderHome() {
+    var ecgIconSvg = '<svg viewBox="0 0 60 24" width="30" height="16" fill="none" stroke="#35e08f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+      '<polyline points="0,14 14,14 18,4 23,20 27,10 30,14 60,14"/></svg>';
+
     var cards = CaseData.all.map(function (c) {
       return h('button', { class: 'case-card fade-in', onclick: function () { openCase(c.id); } }, [
         h('div', { class: 'num' }, [String(c.num)]),
+        h('div', { class: 'ecg-icon', html: ecgIconSvg }),
         h('div', { class: 'meta' }, [
           h('div', { class: 't' }, ['Example #' + c.num])
         ]),
@@ -157,9 +161,75 @@
       h('div', { class: 'hero fade-in' }, [
         h('div', { class: 'hero-ecg', 'aria-hidden': 'true' }),
         h('span', { class: 'badge' }, ['Detect & Correct']),
-        h('h1', {}, ['Can you spot the electrode swap?'])
+        h('h1', {}, ['Quiz yourself against the model!']),
+        h('p', { style: 'color:rgba(255,255,255,0.75);margin:8px 0 0;font-size:0.85rem' }, [
+          'Detecting and Correcting ECG Limb-Lead Electrode Swapping via Deep Learning'
+        ])
       ]),
-      h('div', { class: 'case-list' }, cards)
+      h('div', { class: 'about-wide fade-in', style: 'margin-top:24px' }, [
+        h('div', { class: 'about-card' }, [
+          h('h2', { class: 'about-title' }, ['Detecting and Correcting ECG Limb-Lead Electrode Swapping via Deep Learning']),
+          h('p', { class: 'about-subtitle' }, [
+            'A two-stage deep learning pipeline that detects, classifies, and corrects limb-lead electrode swaps in 12-lead ECGs — validated on real PTB-XL recordings. Alphanumerics Lab, Emory University.'
+          ]),
+
+          h('div', { class: 'about-full' }, [
+            h('img', {
+              src: './assets/poster/clinical-case.jpg',
+              alt: 'Clinical case illustration: an undetected electrode swap in a chest-pain patient risks a misdiagnosis and an unnecessary $25K procedure.'
+            })
+          ]),
+
+          h('div', { class: 'about-block' }, [
+            h('div', { class: 'about-block-title' }, ['Quiz Yourself Against the Model']),
+            h('div', { class: 'about-quiz-row' }, cards)
+          ]),
+
+          h('div', { class: 'about-block' }, [
+            h('div', { class: 'about-block-title' }, ['The Problem: Why Electrode Misplacement?']),
+            h('div', { class: 'about-block-subtitle' }, [
+              h('ul', {}, [
+                h('li', {}, ['Electrode misplacement occurs in 0.4% – 4% of high-acuity care settings.']),
+                h('li', {}, ['Risks serious diagnostic errors, including obscuring or mimicking myocardial infarction, dextrocardia, and extreme axis deviation.'])
+              ])
+            ])
+          ]),
+
+          h('div', { class: 'about-block' }, [
+            h('div', { class: 'about-block-title' }, ['Objective']),
+            h('div', { class: 'about-block-subtitle' }, [
+              h('ol', {}, [
+                h('li', {}, ['Detect and classify limb lead electrode swaps using a deep learning approach.']),
+                h('li', {}, ['Correct limb lead electrode swaps using the mathematical relationship between electrodes and leads.'])
+              ])
+            ])
+          ]),
+
+          h('div', { class: 'about-figures' }, [
+            h('figure', {}, [
+              h('img', {
+                src: './assets/poster/data-generation.jpg',
+                alt: 'Artificial data generation pipeline: lead space, electrode space, electrode swap, and the resulting "swapped" lead.'
+              }),
+              h('figcaption', {}, ['Artificial Data Generation — CODE-15%'])
+            ]),
+            h('figure', {}, [
+              h('img', {
+                src: './assets/poster/electrode-swap-classes.jpg',
+                alt: 'The four electrode swap classes: no swap, RA-LA, RA-LL, and LA-LL, each shown as a body diagram with the swapped leads.'
+              }),
+              h('figcaption', {}, ['Electrode Swap Classes'])
+            ]),
+            h('figure', {}, [
+              h('img', {
+                src: './assets/poster/model-idea.jpg',
+                alt: 'Diagram of the two-layer CNN model reading leads I, II, and III to detect and classify electrode swaps.'
+              }),
+              h('figcaption', {}, ['Model Idea — Layer 1 & Layer 2'])
+            ])
+          ])
+        ])
+      ])
     ]);
   }
 
